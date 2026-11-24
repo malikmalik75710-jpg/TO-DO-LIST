@@ -1,285 +1,395 @@
+
 import { useEffect, useState } from "react";
 import "./App.css";
 
-const API_URL = "http://localhost:5000/api/tasks";
+const BASE_URL = "https://hussnain-todo-backend.vercel.app";
+const API_URL = `${BASE_URL}/api/tasks`;
+
+const hobbies = [
+  "Cricket",
+  "Badminton",
+  "Coding",
+  "Marketing",
+  "Pool",
+];
+
+async function apiRequest(url, options = {}) {
+  const response = await fetch(url, options);
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.message || `Request failed: ${response.status}`);
+  }
+
+  return data;
+}
 
 function App() {
   const [tasks, setTasks] = useState([]);
   const [task, setTask] = useState("");
   const [hobby, setHobby] = useState("Cricket");
-  const [backendMessage, setBackendMessage] = useState("");
+  const [backendMessage, setBackendMessage] = useState("Connecting...");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const hobbies = [
-    "Cricket",
-    "Badminton",
-    "Coding",
-    "Marketing",
-    "Pool",
-  ];
-
-  // Backend connection
+  // Connect to backend and load tasks
   useEffect(() => {
-    fetch("http://localhost:5000/")
-      .then((response) => response.json())
-      .then((data) => setBackendMessage(data.message))
-      .catch(() => setBackendMessage("Backend connection failed"));
+    let ignore = false;
 
-    loadTasks();
+    async function connectBackend() {
+      try {
+        const healthResponse = await fetch(`${BASE_URL}/`);
+
+        if (!healthResponse.ok) {
+          throw new Error("Backend connection failed");
+        }
+
+        if (!ignore) {
+          setBackendMessage("Backend Connected");
+        }
+
+        const data = await apiRequest(API_URL);
+
+        if (!ignore) {
+          setTasks(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setBackendMessage("Backend Connection Failed");
+          setError(err.message);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    connectBackend();
+
+    return () => {
+      ignore = true;
+    };
   }, []);
 
-  // Get tasks from backend
-  const loadTasks = () => {
-    fetch(API_URL)
-      .then((response) => response.json())
-      .then((data) => setTasks(data))
-      .catch((error) => console.log(error));
-  };
+  // Add task
+  async function addTask(e) {
+    e.preventDefault();
 
-  // Add task to backend
-  const addTask = async () => {
-    if (task.trim() === "") return;
+    if (!task.trim()) {
+      setError("Please enter a task!");
+      return;
+    }
 
     try {
-      const response = await fetch(API_URL, {
+      setError("");
+
+      const newTask = await apiRequest(API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text: task,
+          text: task.trim(),
           hobby: hobby,
         }),
       });
 
-      const newTask = await response.json();
-
-      setTasks([...tasks, newTask]);
+      setTasks((previous) => [...previous, newTask]);
       setTask("");
-    } catch (error) {
-      console.log("Error adding task:", error);
+    } catch (err) {
+      setError(err.message);
     }
-  };
+  }
 
-  // Delete task from backend
-  const deleteTask = async (id) => {
+  // Delete task
+  async function deleteTask(id) {
     try {
-      await fetch(`${API_URL}/${id}`, {
+      setError("");
+
+      await apiRequest(`${API_URL}/${id}`, {
         method: "DELETE",
       });
 
-      setTasks(tasks.filter((item) => item.id !== id));
-    } catch (error) {
-      console.log("Error deleting task:", error);
-    }
-  };
-
-  // Complete / Undo task
-  const toggleComplete = async (id) => {
-    const currentTask = tasks.find((item) => item.id === id);
-
-    try {
-      const response = await fetch(`${API_URL}/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          completed: !currentTask.completed,
-        }),
-      });
-
-      const updatedTask = await response.json();
-
-      setTasks(
-        tasks.map((item) =>
-          item.id === id ? updatedTask : item
-        )
+      setTasks((previous) =>
+        previous.filter((item) => item.id !== id)
       );
-    } catch (error) {
-      console.log("Error updating task:", error);
+    } catch (err) {
+      setError(err.message);
     }
-  };
+  }
 
   // Edit task
-  const editTask = async (id) => {
-    const currentTask = tasks.find((item) => item.id === id);
-
-    const newText = prompt(
-      "Enter new task:",
-      currentTask.text
+  async function editTask(item) {
+    const updatedText = window.prompt(
+      "Enter updated task:",
+      item.text
     );
 
-    if (!newText || newText.trim() === "") return;
+    if (updatedText === null || !updatedText.trim()) {
+      return;
+    }
 
     try {
-      const response = await fetch(`${API_URL}/${id}`, {
+      setError("");
+
+      const updatedTask = await apiRequest(`${API_URL}/${item.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          text: newText,
+          text: updatedText.trim(),
         }),
       });
 
-      const updatedTask = await response.json();
-
-      setTasks(
-        tasks.map((item) =>
-          item.id === id ? updatedTask : item
+      setTasks((previous) =>
+        previous.map((taskItem) =>
+          taskItem.id === item.id ? updatedTask : taskItem
         )
       );
-    } catch (error) {
-      console.log("Error editing task:", error);
+    } catch (err) {
+      setError(err.message);
     }
+  }
+
+  // Complete task
+  async function toggleTask(item) {
+    try {
+      setError("");
+
+      const updatedTask = await apiRequest(`${API_URL}/${item.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          completed: !item.completed,
+        }),
+      });
+
+      setTasks((previous) =>
+        previous.map((taskItem) =>
+          taskItem.id === item.id ? updatedTask : taskItem
+        )
+      );
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  const completedCount = tasks.filter(
+    (item) => item.completed
+  ).length;
+
+  const styles = {
+    page: {
+      minHeight: "100vh",
+      background: "linear-gradient(135deg, #07152f, #102b50)",
+      padding: "40px 18px",
+      color: "white",
+      fontFamily: "Arial, sans-serif",
+    },
+    container: {
+      maxWidth: "750px",
+      margin: "auto",
+    },
+    heading: {
+      textAlign: "center",
+      fontSize: "36px",
+      fontWeight: "bold",
+      marginBottom: "8px",
+    },
+    subtitle: {
+      textAlign: "center",
+      color: "#b8c9df",
+      marginBottom: "25px",
+    },
+    status: {
+      textAlign: "center",
+      color: backendMessage === "Backend Connected"
+        ? "#69f0ae"
+        : "#ffcc80",
+      marginBottom: "22px",
+      fontWeight: "bold",
+    },
+    card: {
+      background: "#152d4d",
+      padding: "24px",
+      borderRadius: "16px",
+      marginBottom: "22px",
+      boxShadow: "0 8px 25px rgba(0,0,0,0.25)",
+    },
+    input: {
+      width: "100%",
+      padding: "14px",
+      borderRadius: "9px",
+      border: "1px solid #526987",
+      background: "#f5f8ff",
+      color: "#14233d",
+      fontSize: "16px",
+      marginBottom: "13px",
+      boxSizing: "border-box",
+    },
+    addButton: {
+      width: "100%",
+      padding: "14px",
+      border: "none",
+      borderRadius: "9px",
+      background: "#35d07f",
+      color: "#071c2e",
+      fontWeight: "bold",
+      fontSize: "16px",
+      cursor: "pointer",
+    },
+    taskCard: {
+      background: "#203c60",
+      padding: "17px",
+      borderRadius: "11px",
+      marginBottom: "13px",
+      border: "1px solid #365477",
+    },
+    actionButton: {
+      border: "none",
+      padding: "9px 13px",
+      borderRadius: "7px",
+      cursor: "pointer",
+      fontWeight: "bold",
+      marginRight: "8px",
+      marginTop: "12px",
+    },
   };
 
   return (
-    <div className="app">
-      <div className="container">
+    <div style={styles.page}>
+      <div style={styles.container}>
 
-        <h1>Hussnain To Do List</h1>
+        <h1 style={styles.heading}>
+          HUSSAIN TO DO LIST
+        </h1>
 
-        <p className="subtitle">
-          Manage your daily tasks and hobbies
+        <p style={styles.subtitle}>
+          Organize Your Tasks • Build Good Habits
         </p>
 
-        <div className="backend-status">
-          <span>Backend Status:</span>
-
-          <strong>
-            {backendMessage}
-          </strong>
+        <div style={styles.status}>
+          ● {backendMessage}
         </div>
 
-        <div className="input-section">
+        <div style={styles.card}>
+          <h2>Add New Task</h2>
 
-          <input
-            type="text"
-            placeholder="Enter your task..."
-            value={task}
-            onChange={(e) => setTask(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                addTask();
-              }
-            }}
-          />
+          <form onSubmit={addTask}>
+            <input
+              style={styles.input}
+              type="text"
+              placeholder="Enter your task..."
+              value={task}
+              onChange={(e) => setTask(e.target.value)}
+            />
 
-          <select
-            value={hobby}
-            onChange={(e) => setHobby(e.target.value)}
-          >
-            {hobbies.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
+            <select
+              style={styles.input}
+              value={hobby}
+              onChange={(e) => setHobby(e.target.value)}
+            >
+              {hobbies.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
 
-          <button
-            onClick={addTask}
-            className="add-btn"
-          >
-            + Add Task
-          </button>
+            <button style={styles.addButton} type="submit">
+              + ADD TASK
+            </button>
+          </form>
 
+          {error && (
+            <p style={{ color: "#ff8585", marginTop: "15px" }}>
+              {error}
+            </p>
+          )}
         </div>
 
-        <div className="hobbies">
-
-          <h2>My Hobbies</h2>
-
-          <div className="hobby-list">
-
-            {hobbies.map((item) => (
-              <span
-                key={item}
-                className="hobby"
-              >
-                {item}
-              </span>
-            ))}
-
-          </div>
-
-        </div>
-
-        <div className="tasks">
-
+        <div style={styles.card}>
           <h2>My Tasks</h2>
 
-          {tasks.length === 0 ? (
-            <p className="empty">
-              No tasks added yet.
+          <p style={{ color: "#bdcde0" }}>
+            Total: {tasks.length} |
+            Completed: {completedCount} |
+            Pending: {tasks.length - completedCount}
+          </p>
+
+          {loading && <p>Loading tasks...</p>}
+
+          {!loading && tasks.length === 0 && (
+            <p style={{ color: "#bdcde0" }}>
+              No tasks yet. Add your first task!
             </p>
-          ) : (
-
-            tasks.map((item) => (
-              <div
-                className={`task-card ${
-                  item.completed
-                    ? "completed"
-                    : ""
-                }`}
-                key={item.id}
-              >
-
-                <div className="task-info">
-
-                  <h3>
-                    {item.text}
-                  </h3>
-
-                  <span className="task-hobby">
-                    {item.hobby}
-                  </span>
-
-                </div>
-
-                <div className="buttons">
-
-                  <button
-                    onClick={() =>
-                      toggleComplete(item.id)
-                    }
-                    className="complete-btn"
-                  >
-                    {item.completed
-                      ? "Undo"
-                      : "Done"}
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      editTask(item.id)
-                    }
-                    className="edit-btn"
-                  >
-                    Edit
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      deleteTask(item.id)
-                    }
-                    className="delete-btn"
-                  >
-                    Delete
-                  </button>
-
-                </div>
-
-              </div>
-            ))
-
           )}
 
+          {tasks.map((item) => (
+            <div key={item.id} style={styles.taskCard}>
+              <h3
+                style={{
+                  textDecoration: item.completed
+                    ? "line-through"
+                    : "none",
+                  color: item.completed ? "#8ba4bd" : "white",
+                }}
+              >
+                {item.text}
+              </h3>
+
+              <p style={{ color: "#b8c9df" }}>
+                Hobby: {item.hobby}
+              </p>
+
+              <p style={{ color: item.completed ? "#69f0ae" : "#ffcc80" }}>
+                {item.completed ? "Completed" : "Pending"}
+              </p>
+
+              <button
+                style={{
+                  ...styles.actionButton,
+                  background: "#35d07f",
+                  color: "#071c2e",
+                }}
+                onClick={() => toggleTask(item)}
+              >
+                {item.completed ? "Undo" : "Complete"}
+              </button>
+
+              <button
+                style={{
+                  ...styles.actionButton,
+                  background: "#ffca50",
+                  color: "#17243a",
+                }}
+                onClick={() => editTask(item)}
+              >
+                Edit
+              </button>
+
+              <button
+                style={{
+                  ...styles.actionButton,
+                  background: "#ff5555",
+                  color: "white",
+                }}
+                onClick={() => deleteTask(item.id)}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
         </div>
 
-        <div className="footer">
-          Built with React + Node.js + Express
-        </div>
+        <p style={{ textAlign: "center", color: "#a9bdd6" }}>
+          Made with React & Express
+        </p>
 
       </div>
     </div>
