@@ -7,8 +7,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-let tasks = [];
-
 // Backend test
 app.get("/", (req, res) => {
   res.json({
@@ -17,6 +15,8 @@ app.get("/", (req, res) => {
 });
 
 // Get all tasks
+let tasks = [];
+
 app.get("/api/tasks", (req, res) => {
   res.json(tasks);
 });
@@ -39,7 +39,6 @@ app.post("/api/tasks", (req, res) => {
   };
 
   tasks.push(newTask);
-
   res.status(201).json(newTask);
 });
 
@@ -67,16 +66,11 @@ app.put("/api/tasks/:id", (req, res) => {
     });
   }
 
-  if (text !== undefined) {
-    task.text = text;
-  }
-
-  if (completed !== undefined) {
-    task.completed = completed;
-  }
+  if (text !== undefined) task.text = text;
+  if (completed !== undefined) task.completed = completed;
 
   res.json(task);
 });
 
-// Vercel serverless export
+// Export Express app for Vercel
 module.exports = app;
